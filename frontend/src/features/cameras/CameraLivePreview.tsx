@@ -23,7 +23,7 @@ export function CameraLivePreview({ cameraId, title }: CameraLivePreviewProps) {
             className="dash-live-camera-img"
           />
           <p className="dash-live-camera-caption">
-            Actualización automática cada pocos segundos (fotograma vía HTTP).
+            Actualización automática ~cada segundo (fotograma vía HTTP; el análisis de personas va por otro intervalo en el servidor).
           </p>
         </div>
       ) : null}

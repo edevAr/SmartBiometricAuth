@@ -37,8 +37,9 @@ async function snapshotErrorMessage(err: unknown, fallback: string): Promise<str
 /**
  * Poll de fotogramas vía GET /cameras/:id/snapshot (proxy en backend).
  * Revoca blob URLs al desmontar o al cambiar de cámara.
+ * @param intervalMs por defecto 1s; más bajo = más carga en cámara/servidor (no afecta al intervalo del monitor ML en backend).
  */
-export function useCameraLiveSnapshot(cameraId: string | null, intervalMs = 2200) {
+export function useCameraLiveSnapshot(cameraId: string | null, intervalMs = 1000) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

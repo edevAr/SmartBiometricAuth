@@ -205,9 +205,9 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
       <header className="alerts-page-head">
         <h1 className="alerts-page-title">Centro de Alertas</h1>
         <p className="alerts-page-subtitle">
-          Alertas cuando una cámara <strong>activa</strong> detecta movimiento o un cambio visual
-          importante (heurística de posible persona). El servidor compara fotogramas cada pocos
-          segundos.
+          Alertas cuando una cámara <strong>activa</strong> muestra una <strong>persona</strong>{' '}
+          reconocida por modelo visual (COCO SSD). No se alerta por simple movimiento, insectos ni
+          animales salvo que el modelo los confunda con una persona.
         </p>
       </header>
 
@@ -258,8 +258,8 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
           <p className="alerts-empty-msg">Cargando alertas…</p>
         ) : !active ? (
           <p className="alerts-empty-msg">
-            No hay alertas abiertas. Si las cámaras están activas y el monitor está encendido, los
-            movimientos aparecerán aquí automáticamente.
+            No hay alertas abiertas. Si las cámaras están activas y el monitor ML está encendido,
+            las detecciones de persona aparecerán aquí automáticamente.
           </p>
         ) : (
           <article className="alerts-active-card">
