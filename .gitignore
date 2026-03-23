@@ -1,0 +1,10 @@
+# Dependencias Node.js
+node_modules/
+
+# Salidas de compilación
+dist/
+backend/dist/
+
+# Archivos con extensión .dist y carpeta oculta .dist
+*.dist
+.dist/
