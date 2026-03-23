@@ -5,23 +5,9 @@ import type { CameraRepositoryPort } from '@application/cameras/ports/camera.rep
 import type { EventRepositoryPort } from '@application/events/ports/event.repository';
 import { AccessAttemptsService } from '../../interfaces/http/access/access-attempts.service';
 import { CameraSnapshotService } from './camera-snapshot.service';
+import { PersonDetectionService } from './person-detection.service';
 
 const HARDCODED_ADMIN_ID = '00000000-0000-0000-0000-000000000001';
-
-/** Muestreo de bytes distintos entre dos JPEG (0–1). */
-function sampleDiffRatio(prev: Buffer, nextBuf: Buffer): number {
-  if (!prev.length || !nextBuf.length) return 0;
-  const len = Math.min(prev.length, nextBuf.length, 200_000);
-  const targetSamples = 3500;
-  const step = Math.max(1, Math.floor(len / targetSamples));
-  let diff = 0;
-  let n = 0;
-  for (let i = 0; i < len; i += step) {
-    n++;
-    if (prev[i] !== nextBuf[i]) diff++;
-  }
-  return n > 0 ? diff / n : 0;
-}
 
 function envNumber(name: string, fallback: number): number {
   const v = process.env[name];
@@ -30,18 +16,22 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * Monitor de cámaras: en cada intervalo toma un snapshot y ejecuta detección ML (COCO SSD).
+ * Solo genera alertas / eventos PERSON_DETECTED cuando el modelo clasifica una **persona**
+ * por encima del umbral de confianza. Movimiento, animales o insectos no disparan alertas.
+ */
 @Injectable()
 export class CameraMotionMonitorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CameraMotionMonitorService.name);
   private interval: ReturnType<typeof setInterval> | null = null;
-  private readonly lastFrame = new Map<string, Buffer>();
-  private readonly lastMotionAt = new Map<string, number>();
   private readonly lastPersonAt = new Map<string, number>();
   private tickRunning = false;
 
   constructor(
     private readonly snapshot: CameraSnapshotService,
     private readonly accessAttempts: AccessAttemptsService,
+    private readonly personDetection: PersonDetectionService,
     @Inject('CameraRepositoryPort')
     private readonly cameraRepository: CameraRepositoryPort,
     @Inject('EventRepositoryPort')
@@ -53,11 +43,13 @@ export class CameraMotionMonitorService implements OnModuleInit, OnModuleDestroy
       this.logger.log('Monitor de cámaras desactivado (CAMERA_MONITOR_ENABLED=0)');
       return;
     }
-    const ms = envNumber('CAMERA_MONITOR_INTERVAL_MS', 12_000);
+    const ms = envNumber('CAMERA_MONITOR_INTERVAL_MS', 4_000);
     this.interval = setInterval(() => {
       void this.safeTick();
     }, ms);
-    this.logger.log(`Monitor de cámaras activo (cada ${ms} ms)`);
+    this.logger.log(
+      `Monitor de cámaras activo (cada ${ms} ms). Alertas solo si COCO-SSD detecta clase «person».`,
+    );
   }
 
   onModuleDestroy(): void {
@@ -80,9 +72,12 @@ export class CameraMotionMonitorService implements OnModuleInit, OnModuleDestroy
   }
 
   private async tick(): Promise<void> {
-    const motionThreshold = envNumber('CAMERA_MOTION_DIFF', 0.09);
-    const personThreshold = envNumber('CAMERA_PERSON_DIFF', 0.24);
-    const motionCooldownMs = envNumber('CAMERA_MOTION_COOLDOWN_MS', 45_000);
+    if (process.env.CAMERA_PERSON_ML_ENABLED === '0') {
+      return;
+    }
+
+    const minScore = envNumber('CAMERA_PERSON_MIN_SCORE', 0.32);
+    const maxInputSide = envNumber('CAMERA_PERSON_MAX_INPUT_SIDE', 800);
     const personCooldownMs = envNumber('CAMERA_PERSON_COOLDOWN_MS', 75_000);
 
     const cameras = await this.cameraRepository.findByAdmin(HARDCODED_ADMIN_ID);
@@ -92,52 +87,54 @@ export class CameraMotionMonitorService implements OnModuleInit, OnModuleDestroy
       try {
         const { buffer } = await this.snapshot.fetchSnapshot(cam.id);
         const nextBuf = Buffer.from(buffer);
-        const prev = this.lastFrame.get(cam.id);
-        this.lastFrame.set(cam.id, nextBuf);
 
-        if (!prev?.length) continue;
+        const { isPerson, bestScore, rawPersonScores } = await this.personDetection.detectPerson(
+          nextBuf,
+          minScore,
+          maxInputSide,
+        );
 
-        const ratio = sampleDiffRatio(prev, nextBuf);
-        const now = Date.now();
-
-        if (ratio >= personThreshold) {
-          if (now - (this.lastPersonAt.get(cam.id) ?? 0) < personCooldownMs) continue;
-          this.lastPersonAt.set(cam.id, now);
-          this.lastMotionAt.set(cam.id, now);
-          await this.accessAttempts.recordCameraVisionDetection({
-            cameraId: cam.id,
-            detectionType: 'PERSON_DETECTED',
-            diffRatio: ratio,
-            captureBuffer: nextBuf,
-          });
-          await this.eventRepository.save(
-            Event.createNew({
-              id: randomUUID(),
-              cameraId: cam.id,
-              type: EventType.PERSON_DETECTED,
-              metadataJson: JSON.stringify({ diffRatio: ratio, source: 'camera_monitor' }),
-            }),
-          );
-          this.logger.log(`PERSON_DETECTED cámara ${cam.name} (${cam.ipAddress}) ratio=${ratio.toFixed(3)}`);
-        } else if (ratio >= motionThreshold) {
-          if (now - (this.lastMotionAt.get(cam.id) ?? 0) < motionCooldownMs) continue;
-          this.lastMotionAt.set(cam.id, now);
-          await this.accessAttempts.recordCameraVisionDetection({
-            cameraId: cam.id,
-            detectionType: 'MOTION_DETECTED',
-            diffRatio: ratio,
-            captureBuffer: nextBuf,
-          });
-          await this.eventRepository.save(
-            Event.createNew({
-              id: randomUUID(),
-              cameraId: cam.id,
-              type: EventType.MOTION_DETECTED,
-              metadataJson: JSON.stringify({ diffRatio: ratio, source: 'camera_monitor' }),
-            }),
-          );
-          this.logger.log(`MOTION_DETECTED cámara ${cam.name} (${cam.ipAddress}) ratio=${ratio.toFixed(3)}`);
+        if (!isPerson) {
+          if (
+            process.env.CAMERA_PERSON_DEBUG === '1' &&
+            rawPersonScores.length > 0
+          ) {
+            const top = Math.max(...rawPersonScores);
+            this.logger.log(
+              `[CAMERA_PERSON_DEBUG] ${cam.name}: persona detectada por modelo pero bajo umbral (max=${top.toFixed(3)}, umbral=${minScore})`,
+            );
+          }
+          continue;
         }
+
+        const now = Date.now();
+        if (now - (this.lastPersonAt.get(cam.id) ?? 0) < personCooldownMs) {
+          continue;
+        }
+        this.lastPersonAt.set(cam.id, now);
+
+        const modelId = this.personDetection.getLoadedModelId();
+        await this.accessAttempts.recordCameraPersonMlAlert({
+          cameraId: cam.id,
+          personScore: bestScore,
+          modelId,
+          captureBuffer: nextBuf,
+        });
+        await this.eventRepository.save(
+          Event.createNew({
+            id: randomUUID(),
+            cameraId: cam.id,
+            type: EventType.PERSON_DETECTED,
+            metadataJson: JSON.stringify({
+              source: 'coco_ssd_person',
+              modelId,
+              personScore: Math.round(bestScore * 1000) / 1000,
+            }),
+          }),
+        );
+        this.logger.log(
+          `PERSON_DETECTED (ML) cámara ${cam.name} (${cam.ipAddress}) score=${bestScore.toFixed(3)}`,
+        );
       } catch {
         /* Snapshot falló: cámara apagada o red; siguiente ciclo */
       }

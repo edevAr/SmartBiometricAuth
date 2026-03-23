@@ -28,6 +28,7 @@ import { UserOrmEntity } from './infrastructure/persistence/typeorm/user.orm-ent
 import { ContactRepositoryAdapter } from './infrastructure/persistence/typeorm/contact.repository.adapter';
 import { CameraMotionMonitorService } from './infrastructure/cameras/camera-motion-monitor.service';
 import { CameraSnapshotService } from './infrastructure/cameras/camera-snapshot.service';
+import { PersonDetectionService } from './infrastructure/cameras/person-detection.service';
 import { CameraRepositoryAdapter } from './infrastructure/persistence/typeorm/camera.repository.adapter';
 import { EventRepositoryAdapter } from './infrastructure/persistence/typeorm/event.repository.adapter';
 import { CreateContactUseCase } from './application/contacts/use-cases/create-contact.usecase';
@@ -94,6 +95,7 @@ const entities = [
     RegisterCameraUseCase,
     UpdateCameraUseCase,
     CameraSnapshotService,
+    PersonDetectionService,
     CameraMotionMonitorService,
     ListLatestEventsUseCase,
     {

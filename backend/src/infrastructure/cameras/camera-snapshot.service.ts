@@ -8,6 +8,7 @@ import * as http from 'http';
 import * as https from 'https';
 import type { CameraRepositoryPort } from '@application/cameras/ports/camera.repository';
 import { buildDigestAuthorizationHeader } from './digest-auth.util';
+import { extractJpegBuffer } from './jpeg-buffer.util';
 
 /** Rutas habituales de snapshot (orden: las más usadas primero). */
 const SNAPSHOT_PATHS = [
@@ -162,6 +163,19 @@ export class CameraSnapshotService {
     return { status: r.status, buf: r.buf, contentType: r.contentType };
   }
 
+  /** Limpia JPEG con basura delante/detrás (típico en snapshots IP). */
+  private normalizeSnapshotBuffer(buf: Buffer, contentType: string): Buffer {
+    const ct = contentType.toLowerCase();
+    if (ct.includes('jpeg') || ct.includes('jpg') || this.looksLikeJpeg(buf)) {
+      return extractJpegBuffer(buf);
+    }
+    const trimmed = extractJpegBuffer(buf);
+    if (trimmed.length >= 64 && trimmed[0] === 0xff && trimmed[1] === 0xd8) {
+      return trimmed;
+    }
+    return buf;
+  }
+
   private isValidImage(status: number, buf: Buffer, contentType: string): boolean {
     if (status < 200 || status >= 300) return false;
     if (buf.length < 64) return false;
@@ -201,9 +215,10 @@ export class CameraSnapshotService {
               password,
             );
             if (this.isValidImage(status, buf, contentType)) {
+              const normalized = this.normalizeSnapshotBuffer(buf, contentType);
               return {
-                buffer: buf,
-                contentType: this.contentTypeFor(buf),
+                buffer: normalized,
+                contentType: this.contentTypeFor(normalized),
               };
             }
             if (status >= 400) {

@@ -47,3 +47,7 @@ Cabecera en rutas protegidas: `Authorization: Bearer <token>`
 - `alerts` — alertas operativas vinculadas a eventos  
 
 Más tablas existentes: `trusted_contacts`, `cameras`, `events`.
+
+## Monitor de cámaras (persona)
+
+El servicio de fondo usa **COCO SSD (MobileNet v2)** sobre cada snapshot periódico. Solo crea alertas/eventos `PERSON_DETECTED` cuando la clase **`person`** supera el umbral (`CAMERA_PERSON_MIN_SCORE`). No hay alertas solo por movimiento pixel a pixel. Variables: ver `backend/.env.example`.

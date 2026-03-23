@@ -64,21 +64,19 @@ export class AccessAttemptsService {
   }
 
   /**
-   * Alertas generadas por el monitor de cámaras (movimiento / heurística de persona).
+   * Alerta cuando el modelo visual (COCO SSD) confirma clase `person` en el fotograma.
+   * No se usa para movimiento genérico ni animales/insectos como alerta.
    */
-  async recordCameraVisionDetection(params: {
+  async recordCameraPersonMlAlert(params: {
     cameraId: string;
-    detectionType: 'MOTION_DETECTED' | 'PERSON_DETECTED';
-    diffRatio: number;
+    personScore: number;
+    modelId: string;
     /** Fotograma JPEG capturado en el momento de la detección (opcional). */
     captureBuffer?: Buffer;
   }): Promise<void> {
-    const { cameraId, detectionType, diffRatio, captureBuffer } = params;
-    const severity = detectionType === 'PERSON_DETECTED' ? 'HIGH' : 'MEDIUM';
-    const message =
-      detectionType === 'PERSON_DETECTED'
-        ? 'Posible persona: cambio visual importante en la escena de la cámara'
-        : 'Movimiento detectado en la imagen de la cámara';
+    const { cameraId, personScore, modelId, captureBuffer } = params;
+    const severity = 'HIGH';
+    const message = `Persona detectada (modelo visual). Confianza: ${(personScore * 100).toFixed(1)}%`;
 
     const maxCaptureBytes = 512_000;
     const captureImageBase64 =
@@ -87,14 +85,15 @@ export class AccessAttemptsService {
         : undefined;
 
     const evt = this.securityEvents.create({
-      type: detectionType,
+      type: 'PERSON_DETECTED',
       severity,
       cameraId,
       userId: null,
       accessLogId: null,
       metadataJson: JSON.stringify({
-        source: 'camera_frame_diff',
-        diffRatio: Math.round(diffRatio * 1000) / 1000,
+        source: 'coco_ssd_person',
+        modelId,
+        personScore: Math.round(personScore * 1000) / 1000,
         ...(captureImageBase64 ? { captureImageBase64, captureMimeType: 'image/jpeg' } : {}),
       }),
     });
@@ -102,7 +101,7 @@ export class AccessAttemptsService {
 
     const alert = this.alerts.create({
       securityEventId: evt.id,
-      type: detectionType,
+      type: 'PERSON_DETECTED',
       status: 'OPEN',
       message,
     });
