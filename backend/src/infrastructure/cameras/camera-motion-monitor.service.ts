@@ -119,6 +119,8 @@ export class CameraMotionMonitorService implements OnModuleInit, OnModuleDestroy
           personScore: bestScore,
           modelId,
           captureBuffer: nextBuf,
+          ownerAdminId: HARDCODED_ADMIN_ID,
+          cameraDisplayName: `${cam.name} (${cam.ipAddress})`,
         });
         await this.eventRepository.save(
           Event.createNew({

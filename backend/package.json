@@ -16,8 +16,10 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
+    "test:integration": "jest --config ./test/jest-integration.json --runInBand",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
+    "test:all": "npm run test && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -32,6 +34,7 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "nodemailer": "^8.0.3",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -48,6 +51,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
+    "@types/nodemailer": "^7.0.11",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -75,10 +79,36 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "moduleNameMapper": {
+      "^@domain/(.*)$": "<rootDir>/domain/$1",
+      "^@application/(.*)$": "<rootDir>/application/$1",
+      "^@infrastructure/(.*)$": "<rootDir>/infrastructure/$1",
+      "^@interfaces/(.*)$": "<rootDir>/interfaces/$1"
+    },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "application/**/*.ts",
+      "!application/seed/seed.service.ts",
+      "domain/**/*.ts",
+      "interfaces/http/auth/auth.service.ts",
+      "interfaces/http/auth/jwt-auth.guard.ts",
+      "interfaces/http/users/users.service.ts",
+      "interfaces/http/access/access-attempts.service.ts",
+      "interfaces/http/common/**/*.ts",
+      "infrastructure/cameras/digest-auth.util.ts",
+      "infrastructure/cameras/jpeg-buffer.util.ts",
+      "app.service.ts",
+      "!**/*.spec.ts"
     ],
     "coverageDirectory": "../coverage",
+    "coverageThreshold": {
+      "global": {
+        "branches": 88,
+        "functions": 90,
+        "lines": 90,
+        "statements": 90
+      }
+    },
     "testEnvironment": "node"
   }
 }
+

@@ -35,6 +35,8 @@ import { CreateContactUseCase } from './application/contacts/use-cases/create-co
 import { RegisterCameraUseCase } from './application/cameras/use-cases/register-camera.usecase';
 import { UpdateCameraUseCase } from './application/cameras/use-cases/update-camera.usecase';
 import { ListLatestEventsUseCase } from './application/events/use-cases/list-latest-events.usecase';
+import { PersonAlertMailService } from './infrastructure/mail/person-alert-mail.service';
+import { AlertContactEscalationService } from './infrastructure/alerts/alert-contact-escalation.service';
 
 const entities = [
   RoleOrmEntity,
@@ -90,6 +92,8 @@ const entities = [
     SeedService,
     AuthService,
     UsersService,
+    PersonAlertMailService,
+    AlertContactEscalationService,
     AccessAttemptsService,
     CreateContactUseCase,
     RegisterCameraUseCase,

@@ -30,7 +30,23 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<{ headers: { authorization?: string }; user?: JwtPayload }>();
+    const request = context.switchToHttp().getRequest<{
+      method?: string;
+      url?: string;
+      path?: string;
+      headers: { authorization?: string };
+      user?: JwtPayload;
+    }>();
+    /** Rutas de auth sin JWT (refuerzo si @Public() no aplica en algún despliegue). */
+    const path = (request.path || request.url?.split('?')[0] || '').replace(/\/+$/, '') || '/';
+    const method = (request.method ?? 'GET').toUpperCase();
+    if (
+      method === 'POST' &&
+      (path.endsWith('/auth/login') || path.endsWith('/auth/register'))
+    ) {
+      return true;
+    }
+
     const auth = request.headers.authorization;
     if (!auth?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Token requerido');

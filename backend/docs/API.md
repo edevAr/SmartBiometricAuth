@@ -51,3 +51,9 @@ Más tablas existentes: `trusted_contacts`, `cameras`, `events`.
 ## Monitor de cámaras (persona)
 
 El servicio de fondo usa **COCO SSD (MobileNet v2)** sobre cada snapshot periódico. Solo crea alertas/eventos `PERSON_DETECTED` cuando la clase **`person`** supera el umbral (`CAMERA_PERSON_MIN_SCORE`). No hay alertas solo por movimiento pixel a pixel. Variables: ver `backend/.env.example`.
+
+### Correo a contactos al detectar persona
+
+Las alertas `PERSON_DETECTED` guardan `contacts_notify_at` (por defecto **2 minutos** después de crearse; configurable con `ALERT_CONTACT_EMAIL_DELAY_MS`). Mientras la alerta siga **OPEN**, un servicio periódico (`ALERT_ESCALATION_TICK_MS`) envía el correo a los contactos al llegar esa hora. Si el admin **marca en revisión** o **resuelve** antes, el estado deja de ser `OPEN` y **no** se envía correo.
+
+Si `MAIL_PERSON_ALERT_ENABLED=1` y SMTP está configurado, el cuerpo del correo incluye el nombre del administrador, el mensaje de intruso y el enlace de ubicación (`MAIL_PUBLIC_BASE_URL` o OpenStreetMap). Ver `.env.example`.

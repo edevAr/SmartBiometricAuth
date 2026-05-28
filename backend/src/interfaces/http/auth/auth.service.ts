@@ -46,6 +46,7 @@ export class AuthService {
       roleId: role.id,
       isActive: true,
     });
+    user.role = role;
     await this.users.save(user);
 
     return this.buildAuthResponse(user);
@@ -54,6 +55,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.users.findOne({
       where: { email: dto.email.toLowerCase() },
+      relations: ['role'],
     });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Credenciales incorrectas');
@@ -82,9 +84,31 @@ export class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        phone: user.phone,
         role: user.role.name,
         isActive: user.isActive,
+        locationLat: user.locationLat ?? null,
+        locationLng: user.locationLng ?? null,
+        locationAddress: user.locationAddress ?? null,
       },
+    };
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.users.findOne({ where: { id: userId }, relations: ['role'] });
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      role: user.role.name,
+      isActive: user.isActive,
+      locationLat: user.locationLat ?? null,
+      locationLng: user.locationLng ?? null,
+      locationAddress: user.locationAddress ?? null,
     };
   }
 }

@@ -6,6 +6,13 @@ import { AlertOrmEntity } from '@infrastructure/persistence/typeorm/alert.orm-en
 import { SecurityEventOrmEntity } from '@infrastructure/persistence/typeorm/security-event.orm-entity';
 import type { CreateAccessAttemptDto } from './dto/create-access-attempt.dto';
 
+function alertContactEmailDelayMs(): number {
+  const v = process.env.ALERT_CONTACT_EMAIL_DELAY_MS;
+  if (v === undefined || v === '') return 120_000;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 120_000;
+}
+
 @Injectable()
 export class AccessAttemptsService {
   constructor(
@@ -73,6 +80,10 @@ export class AccessAttemptsService {
     modelId: string;
     /** Fotograma JPEG capturado en el momento de la detección (opcional). */
     captureBuffer?: Buffer;
+    /** Dueño de cámaras/contactos (para enviar correos a sus contactos). */
+    ownerAdminId?: string;
+    /** Texto legible, p. ej. "Entrada (192.168.1.10)". */
+    cameraDisplayName?: string;
   }): Promise<void> {
     const { cameraId, personScore, modelId, captureBuffer } = params;
     const severity = 'HIGH';
@@ -99,11 +110,15 @@ export class AccessAttemptsService {
     });
     await this.securityEvents.save(evt);
 
+    const notifyDelay = alertContactEmailDelayMs();
+    const contactsNotifyAt = new Date(Date.now() + notifyDelay);
     const alert = this.alerts.create({
       securityEventId: evt.id,
       type: 'PERSON_DETECTED',
       status: 'OPEN',
       message,
+      contactsNotifyAt,
+      contactsNotifiedAt: null,
     });
     await this.alerts.save(alert);
   }
@@ -205,6 +220,8 @@ export class AccessAttemptsService {
       message: a.message,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
+      contactsNotifyAt: a.contactsNotifyAt?.toISOString() ?? null,
+      contactsNotifiedAt: a.contactsNotifiedAt?.toISOString() ?? null,
     };
   }
 }

@@ -51,6 +51,16 @@ export class UserOrmEntity {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
+  /** Ubicación del administrador / usuario (mapa OpenStreetMap). */
+  @Column({ name: 'location_lat', type: 'double precision', nullable: true })
+  locationLat!: number | null;
+
+  @Column({ name: 'location_lng', type: 'double precision', nullable: true })
+  locationLng!: number | null;
+
+  @Column({ name: 'location_address', type: 'varchar', length: 512, nullable: true })
+  locationAddress!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

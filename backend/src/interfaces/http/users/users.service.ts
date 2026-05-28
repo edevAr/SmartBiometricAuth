@@ -41,6 +41,9 @@ export class UsersService {
       relationship: user.relationship,
       role: user.role.name,
       isActive: user.isActive,
+      locationLat: user.locationLat ?? null,
+      locationLng: user.locationLng ?? null,
+      locationAddress: user.locationAddress ?? null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -174,6 +177,15 @@ export class UsersService {
       const role = await this.roles.findOne({ where: { name: dto.roleName } });
       if (!role) throw new ConflictException(`Rol inválido: ${dto.roleName}`);
       user.roleId = role.id;
+    }
+    if (dto.clearLocation === true) {
+      user.locationLat = null;
+      user.locationLng = null;
+      user.locationAddress = null;
+    } else {
+      if (dto.locationLat !== undefined) user.locationLat = dto.locationLat;
+      if (dto.locationLng !== undefined) user.locationLng = dto.locationLng;
+      if (dto.locationAddress !== undefined) user.locationAddress = dto.locationAddress;
     }
     await this.users.save(user);
     const fresh = await this.users.findOne({ where: { id }, relations: ['role'] });

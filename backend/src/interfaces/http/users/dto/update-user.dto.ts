@@ -1,4 +1,15 @@
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { ContactRelationship } from '@domain/contacts/contact.entity';
 
 export class UpdateUserDto {
@@ -31,4 +42,27 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   roleName?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  locationLat?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  locationLng?: number;
+
+  @IsOptional()
+  @IsString()
+  locationAddress?: string;
+
+  /** Si es true, borra lat/lng/dirección guardados. */
+  @IsOptional()
+  @IsBoolean()
+  clearLocation?: boolean;
 }
