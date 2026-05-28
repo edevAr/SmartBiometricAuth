@@ -1,38 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import axios from 'axios';
 import { httpClient } from '../../api/httpClient';
-
-async function snapshotErrorMessage(err: unknown, fallback: string): Promise<string> {
-  if (!axios.isAxiosError(err)) return fallback;
-  if (err.code === 'ECONNABORTED') {
-    return 'Tiempo de espera: el servidor tardó demasiado en obtener la imagen. Compruebe la cámara y la red.';
-  }
-  const d = err.response?.data as unknown;
-  if (d == null) return fallback;
-  if (typeof d === 'object' && d !== null && 'message' in d) {
-    const m = (d as { message: unknown }).message;
-    if (typeof m === 'string') return m;
-    if (Array.isArray(m)) return m.join(', ');
-  }
-  if (d instanceof Blob) {
-    try {
-      const text = await d.text();
-      const j = JSON.parse(text) as { message?: unknown };
-      if (typeof j.message === 'string') return j.message;
-    } catch {
-      /* ignore */
-    }
-  }
-  if (typeof d === 'string') {
-    try {
-      const j = JSON.parse(d) as { message?: unknown };
-      if (typeof j.message === 'string') return j.message;
-    } catch {
-      return d.slice(0, 500);
-    }
-  }
-  return fallback;
-}
+import { snapshotErrorMessage } from './snapshotErrorMessage';
 
 /**
  * Poll de fotogramas vía GET /cameras/:id/snapshot (proxy en backend).

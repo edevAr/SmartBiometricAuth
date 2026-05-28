@@ -1,18 +1,19 @@
 import { httpClient } from './httpClient';
 import { setAuthToken } from './authToken';
+import { setSessionUser, type SessionUser } from './sessionUser';
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  fullName: string;
-  role: string;
-  isActive: boolean;
-};
+export type AuthUser = SessionUser;
 
 export type LoginResponse = {
   access_token: string;
   user: AuthUser;
 };
+
+export async function fetchMe(): Promise<SessionUser> {
+  const { data } = await httpClient.get<SessionUser>('/auth/me');
+  setSessionUser(data);
+  return data;
+}
 
 export async function loginRequest(
   email: string,
@@ -23,6 +24,7 @@ export async function loginRequest(
     password,
   });
   setAuthToken(data.access_token);
+  setSessionUser(data.user);
   return data;
 }
 
@@ -34,5 +36,6 @@ export async function registerRequest(payload: {
 }): Promise<LoginResponse> {
   const { data } = await httpClient.post<LoginResponse>('/auth/register', payload);
   setAuthToken(data.access_token);
+  setSessionUser(data.user);
   return data;
 }

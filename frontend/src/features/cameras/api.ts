@@ -36,12 +36,12 @@ export type UpdateCameraInput = {
   isActive?: boolean;
 };
 
-async function fetchCameras(): Promise<Camera[]> {
+export async function fetchCameras(): Promise<Camera[]> {
   const { data } = await httpClient.get<Camera[]>('/cameras');
   return data;
 }
 
-async function registerCamera(input: RegisterCameraInput): Promise<Camera> {
+export async function registerCamera(input: RegisterCameraInput): Promise<Camera> {
   const body: Record<string, string> = {
     ipAddress: input.ipAddress.trim(),
     username: input.username.trim(),
@@ -55,7 +55,7 @@ async function registerCamera(input: RegisterCameraInput): Promise<Camera> {
   return data;
 }
 
-async function updateCamera(id: string, input: UpdateCameraInput): Promise<Camera> {
+export async function updateCamera(id: string, input: UpdateCameraInput): Promise<Camera> {
   const body: Record<string, string | boolean> = {};
   if (input.name !== undefined) body.name = input.name;
   if (input.ipAddress !== undefined) body.ipAddress = input.ipAddress;

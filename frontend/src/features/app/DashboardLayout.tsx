@@ -1,10 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { getAuthToken } from '../../api/authToken';
+import { fetchMe } from '../../api/authApi';
+import { getSessionUser } from '../../api/sessionUser';
 import { ContactsView } from '../contacts/ContactsView';
 import { AiManagementView } from '../ai/AiManagementView';
 import { AlertsCenterView } from '../alerts/AlertsCenterView';
 import { useAlertsQuery } from '../alerts/api';
 import { useEventsQuery } from '../events/api';
+import { AdminProfileModal } from '../profile/AdminProfileModal';
 import { DashboardHomeView } from './DashboardHomeView';
+
+function initialsFromName(fullName: string | undefined): string {
+  const n = fullName?.trim();
+  if (!n) return '?';
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const a = parts[0][0];
+    const b = parts[parts.length - 1][0];
+    return `${a}${b}`.toUpperCase();
+  }
+  return n.slice(0, 2).toUpperCase();
+}
 
 type Tab = 'dashboard' | 'contacts' | 'ai' | 'alerts';
 
@@ -74,6 +90,22 @@ function TabIcon({ name }: { name: (typeof tabs)[number]['icon'] }) {
 
 export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
   const [tab, setTab] = useState<Tab>('dashboard');
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [, setSessionTick] = useState(0);
+  const refreshSessionSnapshot = () => setSessionTick((t) => t + 1);
+
+  useEffect(() => {
+    if (getAuthToken() && !getSessionUser()) {
+      void fetchMe()
+        .then(() => refreshSessionSnapshot())
+        .catch(() => {});
+    }
+  }, []);
+
+  const sessionUser = getSessionUser();
+  const adminUserId = sessionUser?.id ?? null;
+  const avatarLabel = initialsFromName(sessionUser?.fullName);
+
   const { data: events } = useEventsQuery();
   const { data: alerts } = useAlertsQuery();
   const openCount = alerts?.filter((a) => a.status === 'OPEN').length ?? 0;
@@ -119,15 +151,22 @@ export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
             </svg>
             {alertBadge > 0 ? <span className="dash-notif-badge">{alertBadge}</span> : null}
           </button>
-          <div className="dash-user-block">
+          <button
+            type="button"
+            className="dash-user-block dash-user-block--clickable"
+            onClick={() => setProfileModalOpen(true)}
+            aria-label="Abrir perfil del administrador"
+          >
             <div className="dash-user-avatar" aria-hidden>
-              A
+              {avatarLabel}
             </div>
             <div className="dash-user-meta">
-              <span className="dash-user-role-title">Admin</span>
-              <span className="dash-user-role-sub">Propietario</span>
+              <span className="dash-user-role-title">
+                {sessionUser?.fullName?.trim() || 'Admin'}
+              </span>
+              <span className="dash-user-role-sub">Administrador</span>
             </div>
-          </div>
+          </button>
           <button type="button" className="dash-logout-btn" onClick={onLogout}>
             Salir
           </button>
@@ -159,6 +198,15 @@ export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
           <AlertsCenterView onRegisterContact={() => setTab('contacts')} />
         )}
       </main>
+
+      <AdminProfileModal
+        open={profileModalOpen}
+        userId={adminUserId}
+        onClose={() => {
+          setProfileModalOpen(false);
+          refreshSessionSnapshot();
+        }}
+      />
     </div>
   );
 }

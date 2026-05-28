@@ -5,8 +5,9 @@ import {
   useContactsQuery,
   useCreateContactMutation,
   useDeactivateUserMutation,
+  useUpdateUserMutation,
 } from './api';
-import type { CreateContactInput } from './api';
+import type { Contact, CreateContactInput } from './api';
 import {
   contactToCardModel,
   isFullyTrained,
@@ -190,9 +191,17 @@ function BiometricUploadModal({
 export function ContactsView() {
   const { data, isLoading } = useContactsQuery();
   const createMutation = useCreateContactMutation();
+  const updateMutation = useUpdateUserMutation();
   const deactivateMutation = useDeactivateUserMutation();
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [editForm, setEditForm] = useState<CreateContactInput>({
+    name: '',
+    relationship: 'FAMILY',
+    email: '',
+    phone: '',
+  });
   const [form, setForm] = useState<CreateContactInput>({
     name: '',
     relationship: 'FAMILY',
@@ -205,19 +214,21 @@ export function ContactsView() {
     [data],
   );
 
-  const filtered = useMemo(() => {
+  const filteredContacts = useMemo(() => {
+    const raw = data ?? [];
     const q = search.trim().toLowerCase();
-    if (!q) return allCards;
-    return allCards.filter((c) => {
-      const rel = c.relationship.toLowerCase();
+    if (!q) return raw;
+    return raw.filter((c) => {
+      const card = contactToCardModel(c);
+      const rel = card.relationship.toLowerCase();
       return (
-        c.name.toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q) ||
+        card.name.toLowerCase().includes(q) ||
+        card.email.toLowerCase().includes(q) ||
+        card.phone.toLowerCase().includes(q) ||
         rel.includes(q)
       );
     });
-  }, [allCards, search]);
+  }, [data, search]);
 
   const stats = useMemo(() => {
     const total = allCards.length;
@@ -225,6 +236,38 @@ export function ContactsView() {
     const pending = total - trained;
     return { total, trained, pending };
   }, [allCards]);
+
+  useEffect(() => {
+    if (!editContact) return;
+    setEditForm({
+      name: editContact.name,
+      relationship: editContact.relationship || 'OTHER',
+      email: editContact.email?.trim() ?? '',
+      phone: editContact.phone?.trim() ?? '',
+    });
+  }, [editContact]);
+
+  const handleEditSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!editContact) return;
+    if (!editForm.name.trim()) return;
+    if (!editForm.email?.trim()) {
+      window.alert('El email es obligatorio.');
+      return;
+    }
+    updateMutation.mutate(
+      {
+        id: editContact.id,
+        fullName: editForm.name.trim(),
+        email: editForm.email.trim().toLowerCase(),
+        relationship: editForm.relationship,
+        phone: editForm.phone?.trim() || undefined,
+      },
+      {
+        onSuccess: () => setEditContact(null),
+      },
+    );
+  };
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -305,7 +348,7 @@ export function ContactsView() {
 
       {isLoading ? (
         <p className="contacts-loading">Cargando…</p>
-      ) : filtered.length === 0 ? (
+      ) : filteredContacts.length === 0 ? (
         <p className="contacts-loading">
           {search.trim()
             ? 'No hay contactos que coincidan con la búsqueda.'
@@ -313,19 +356,24 @@ export function ContactsView() {
         </p>
       ) : (
         <ul className="contacts-grid">
-          {filtered.map((c) => (
-            <li key={c.id}>
+          {filteredContacts.map((contact) => (
+            <li key={contact.id}>
               <ContactCard
-                contact={c}
+                contact={contactToCardModel(contact)}
+                onEdit={
+                  isPersistedUserId(contact.id)
+                    ? () => setEditContact(contact)
+                    : undefined
+                }
                 onDeactivate={
-                  isPersistedUserId(c.id)
+                  isPersistedUserId(contact.id)
                     ? () => {
                         if (
                           window.confirm(
-                            `¿Desactivar a ${c.name}? Podrás seguir viéndolo en la lista como inactivo.`,
+                            `¿Desactivar a ${contact.name}? Podrás seguir viéndolo en la lista como inactivo.`,
                           )
                         ) {
-                          deactivateMutation.mutate(c.id);
+                          deactivateMutation.mutate(contact.id);
                         }
                       }
                     : undefined
@@ -335,6 +383,87 @@ export function ContactsView() {
           ))}
         </ul>
       )}
+
+      {editContact ? (
+        <div
+          className="contacts-modal-backdrop"
+          role="presentation"
+          onClick={() => setEditContact(null)}
+        >
+          <div
+            className="contacts-modal"
+            role="dialog"
+            aria-labelledby="contacts-edit-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="contacts-edit-modal-title" className="contacts-modal-title">
+              Editar contacto
+            </h2>
+            <p className="contacts-modal-edit-hint">
+              Pulsa fuera de esta ventana o en Cancelar para cerrar sin guardar.
+            </p>
+            <form className="contacts-modal-form" onSubmit={handleEditSubmit}>
+              <label className="contacts-modal-field">
+                <span>Nombre</span>
+                <input
+                  className="contacts-modal-input"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                />
+              </label>
+              <label className="contacts-modal-field">
+                <span>Relación</span>
+                <select
+                  className="contacts-modal-input"
+                  value={editForm.relationship}
+                  onChange={(e) => setEditForm({ ...editForm, relationship: e.target.value })}
+                >
+                  {relationshipOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="contacts-modal-field">
+                <span>Email</span>
+                <input
+                  className="contacts-modal-input"
+                  type="email"
+                  required
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                />
+              </label>
+              <label className="contacts-modal-field">
+                <span>Teléfono</span>
+                <input
+                  className="contacts-modal-input"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                />
+              </label>
+              <div className="contacts-modal-actions">
+                <button
+                  type="button"
+                  className="contacts-modal-cancel"
+                  onClick={() => setEditContact(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="contacts-modal-submit"
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? 'Guardando…' : 'Guardar cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {modalOpen ? (
         <div
@@ -419,9 +548,11 @@ export function ContactsView() {
 
 function ContactCard({
   contact: c,
+  onEdit,
   onDeactivate,
 }: {
   contact: ContactCardModel;
+  onEdit?: () => void;
   onDeactivate?: () => void;
 }) {
   const [bioModal, setBioModal] = useState<BiometricKind | null>(null);
@@ -434,7 +565,11 @@ function ContactCard({
         : 'contacts-rel--confianza';
 
   return (
-    <article className="contact-card">
+    <article
+      className={`contact-card${onEdit ? ' contact-card--clickable' : ''}`}
+      onClick={() => onEdit?.()}
+      title={onEdit ? 'Clic para editar datos del contacto' : undefined}
+    >
       <div className="contact-card-top">
         <div className="contact-card-identity">
           <div className={`contact-avatar contact-avatar--${c.avatarTone}`}>{c.initials}</div>
@@ -447,7 +582,10 @@ function ContactCard({
           type="button"
           className="contact-card-menu"
           aria-label={onDeactivate ? 'Desactivar usuario' : 'Más opciones'}
-          onClick={() => onDeactivate?.()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeactivate?.();
+          }}
           disabled={!onDeactivate}
           title={onDeactivate ? 'Desactivar usuario' : undefined}
         >
@@ -477,14 +615,20 @@ function ContactCard({
           <button
             type="button"
             className={`contact-bio-pill contact-bio-pill--action ${c.faceOk ? 'contact-bio-pill--ok' : 'contact-bio-pill--no'}`}
-            onClick={() => setBioModal('face')}
+            onClick={(e) => {
+              e.stopPropagation();
+              setBioModal('face');
+            }}
           >
             {c.faceOk ? '✓ Rostro' : '✕ Rostro'}
           </button>
           <button
             type="button"
             className={`contact-bio-pill contact-bio-pill--action ${c.voiceOk ? 'contact-bio-pill--ok' : 'contact-bio-pill--no'}`}
-            onClick={() => setBioModal('voice')}
+            onClick={(e) => {
+              e.stopPropagation();
+              setBioModal('voice');
+            }}
           >
             {c.voiceOk ? '✓ Voz' : '✕ Voz'}
           </button>

@@ -33,7 +33,7 @@ export type UpdateAuthorizedUserInput = {
   isActive?: boolean;
 };
 
-type UserApi = {
+export type UserApi = {
   id: string;
   email: string;
   fullName: string;
@@ -66,7 +66,7 @@ async function fetchBiometricProfile(userId: string): Promise<BiometricProfileAp
   }
 }
 
-function userToContact(u: UserApi): Contact {
+export function userToContact(u: UserApi): Contact {
   return {
     id: u.id,
     name: u.fullName,
@@ -96,7 +96,7 @@ async function fetchAuthorizedUsers(): Promise<Contact[]> {
   return list;
 }
 
-async function createAuthorizedUser(input: CreateContactInput): Promise<Contact> {
+export async function createAuthorizedUser(input: CreateContactInput): Promise<Contact> {
   const email = input.email?.trim();
   if (!email) {
     throw new Error('El email es obligatorio para usuarios autorizados.');

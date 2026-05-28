@@ -1,10 +1,9 @@
 import axios from 'axios';
 import { getAuthToken } from './authToken';
-
-const backendBaseUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
+import { resolveBackendBaseUrl } from './resolveBackendUrl';
 
 export const httpClient = axios.create({
-  baseURL: backendBaseUrl,
+  baseURL: resolveBackendBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

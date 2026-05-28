@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCamerasQuery } from '../cameras/api';
 import { useAlertsQuery, useUpdateAlertMutation, type AlertItem } from './api';
 
@@ -145,6 +145,68 @@ function AlertsActiveMediaPanel({
   );
 }
 
+/** Temporizador 2 min (o el configurado en servidor) antes de enviar correo a contactos. */
+function PersonAlertEscalationTimer({ alert: a }: { alert: AlertItem }) {
+  if (a.type !== 'PERSON_DETECTED' || a.status !== 'OPEN') return null;
+
+  if (a.contactsNotifiedAt) {
+    return (
+      <div className="alerts-escalation-done" role="status">
+        <p className="alerts-escalation-done-title">Contactos notificados</p>
+        <p className="alerts-escalation-done-text">
+          Se envió un correo a los contactos configurados con tu aviso y ubicación.
+        </p>
+      </div>
+    );
+  }
+
+  if (!a.contactsNotifyAt) return null;
+
+  const deadline = new Date(a.contactsNotifyAt).getTime();
+
+  return <PersonAlertEscalationCountdown deadline={deadline} />;
+}
+
+function PersonAlertEscalationCountdown({ deadline }: { deadline: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const remaining = Math.max(0, deadline - now);
+  const mm = Math.floor(remaining / 60_000);
+  const ss = Math.floor((remaining % 60_000) / 1000);
+
+  if (remaining <= 0) {
+    return (
+      <div className="alerts-escalation-pending" role="status">
+        <p className="alerts-escalation-pending-label">Tiempo de espera finalizado</p>
+        <p className="alerts-escalation-pending-text">
+          El sistema está enviando el correo a tus contactos (o ya lo envió). Esta vista se actualiza
+          sola en unos segundos.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="alerts-escalation-countdown" role="timer" aria-live="polite">
+      <p className="alerts-escalation-countdown-label">
+        Si no haces nada, se notificará automáticamente a tus contactos en:
+      </p>
+      <p className="alerts-escalation-countdown-time">
+        {String(mm).padStart(2, '0')}:{String(ss).padStart(2, '0')}
+      </p>
+      <p className="alerts-escalation-countdown-hint">
+        <strong>Marcar en revisión</strong> o <strong>Resolver</strong> cancela el envío automático
+        si ya tienes la situación controlada.
+      </p>
+    </div>
+  );
+}
+
 function alertTag(a: AlertItem): string {
   switch (a.type) {
     case 'PERSON_DETECTED':
@@ -163,6 +225,8 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
   const { data: cameras } = useCamerasQuery();
   const updateMutation = useUpdateAlertMutation();
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
+  /** Si hay valor, el card superior muestra esa alerta del historial; si no, la primera abierta. */
+  const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
 
   const cameraById = useMemo(() => {
     const m = new Map<string, string>();
@@ -190,6 +254,19 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
   );
   const active = openAlerts[0];
 
+  const detailAlert = useMemo(() => {
+    if (selectedDetailId) {
+      return list.find((a) => a.id === selectedDetailId) ?? null;
+    }
+    return active ?? null;
+  }, [list, selectedDetailId, active]);
+
+  useEffect(() => {
+    if (selectedDetailId && !list.some((a) => a.id === selectedDetailId)) {
+      setSelectedDetailId(null);
+    }
+  }, [list, selectedDetailId]);
+
   const filteredHistory = useMemo(() => {
     const sorted = [...list].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     if (historyFilter === 'camera') return sorted.filter((a) => isCameraVisionType(a.type));
@@ -200,14 +277,19 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
   const cameraLabel = (a: AlertItem) =>
     a.cameraId ? cameraById.get(a.cameraId) ?? a.cameraId.slice(0, 8) + '…' : '—';
 
+  const viewingHistoryDetail =
+    Boolean(selectedDetailId) &&
+    (active == null || selectedDetailId !== active.id);
+
   return (
     <div className="alerts-page">
       <header className="alerts-page-head">
         <h1 className="alerts-page-title">Centro de Alertas</h1>
         <p className="alerts-page-subtitle">
           Alertas cuando una cámara <strong>activa</strong> muestra una <strong>persona</strong>{' '}
-          reconocida por modelo visual (COCO SSD). No se alerta por simple movimiento, insectos ni
-          animales salvo que el modelo los confunda con una persona.
+          reconocida por modelo visual (COCO SSD). Verás un <strong>temporizador</strong>: si no
+          actúas, pasado ese tiempo se envía un correo a tus contactos. Puedes cancelar el envío
+          marcando la alerta en revisión o resolviéndola.
         </p>
       </header>
 
@@ -251,78 +333,118 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
       </section>
 
       <section className="alerts-active-section" aria-labelledby="alerts-active-title">
-        <h2 id="alerts-active-title" className="alerts-section-label">
-          Alertas activas
-        </h2>
+        <div className="alerts-detail-head">
+          <h2 id="alerts-active-title" className="alerts-section-label">
+            Detalle de alerta
+          </h2>
+          {viewingHistoryDetail ? (
+            <button
+              type="button"
+              className="alerts-detail-clear-btn"
+              onClick={() => setSelectedDetailId(null)}
+            >
+              {active ? 'Volver a la alerta abierta' : 'Dejar de ver esta alerta'}
+            </button>
+          ) : null}
+        </div>
+        {viewingHistoryDetail && detailAlert ? (
+          <p className="alerts-detail-hint">
+            Viendo una alerta del historial. Pulse otra fila para cambiar o use el botón de arriba
+            para volver a la vista por defecto.
+          </p>
+        ) : null}
         {isLoading ? (
           <p className="alerts-empty-msg">Cargando alertas…</p>
-        ) : !active ? (
+        ) : !detailAlert ? (
           <p className="alerts-empty-msg">
-            No hay alertas abiertas. Si las cámaras están activas y el monitor ML está encendido,
-            las detecciones de persona aparecerán aquí automáticamente.
+            No hay alerta abierta destacada. Pulse cualquier fila del historial inferior para ver su
+            detalle aquí. Si las cámaras están activas y el monitor ML está encendido, las nuevas
+            alertas abiertas aparecerán automáticamente.
           </p>
         ) : (
-          <article className="alerts-active-card">
-            <AlertsActiveMediaPanel alert={active} locationLabel={cameraLabel(active)} />
+          <article
+            className={`alerts-active-card${detailAlert.status !== 'OPEN' ? ' alerts-active-card--muted' : ''}`}
+          >
+            <AlertsActiveMediaPanel alert={detailAlert} locationLabel={cameraLabel(detailAlert)} />
 
             <div className="alerts-active-main">
               <div className="alerts-active-heading-row">
                 <IconWarningTriangle className="alerts-title-warn-icon" />
-                <h3 className="alerts-active-title">{alertTitle(active)}</h3>
+                <h3 className="alerts-active-title">{alertTitle(detailAlert)}</h3>
               </div>
-              <p className="alerts-active-time">{formatDateTime(active.createdAt)}</p>
-              <p className="alerts-active-desc">{active.message}</p>
+              <p className="alerts-active-time">{formatDateTime(detailAlert.createdAt)}</p>
+              <p className="alerts-active-desc">{detailAlert.message}</p>
+
+              <PersonAlertEscalationTimer alert={detailAlert} />
 
               <div className="alerts-detail-grid">
                 <div className="alerts-detail-cell">
                   <span className="alerts-detail-label">Tipo</span>
-                  <span className="alerts-detail-value">{active.type}</span>
+                  <span className="alerts-detail-value">{detailAlert.type}</span>
                 </div>
                 <div className="alerts-detail-cell">
                   <span className="alerts-detail-label">Cámara / zona</span>
-                  <span className="alerts-detail-value">{cameraLabel(active)}</span>
+                  <span className="alerts-detail-value">{cameraLabel(detailAlert)}</span>
                 </div>
                 <div className="alerts-detail-cell">
                   <span className="alerts-detail-label">Estado</span>
-                  <span className="alerts-detail-value">{active.status}</span>
+                  <span className="alerts-detail-value">{detailAlert.status}</span>
                 </div>
               </div>
             </div>
 
             <div className="alerts-active-aside">
               <div className="alerts-action-stack">
-                <button
-                  type="button"
-                  className="alerts-btn alerts-btn--dark"
-                  disabled={updateMutation.isPending}
-                  onClick={() =>
-                    updateMutation.mutate({ id: active.id, status: 'ACKNOWLEDGED' })
-                  }
-                >
-                  <IconEye />
-                  Marcar en revisión
-                </button>
-                {onRegisterContact ? (
+                {detailAlert.status === 'OPEN' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="alerts-btn alerts-btn--dark"
+                      disabled={updateMutation.isPending}
+                      onClick={() =>
+                        updateMutation.mutate({ id: detailAlert.id, status: 'ACKNOWLEDGED' })
+                      }
+                    >
+                      <IconEye />
+                      Marcar en revisión
+                    </button>
+                    {onRegisterContact ? (
+                      <button
+                        type="button"
+                        className="alerts-btn alerts-btn--green"
+                        onClick={onRegisterContact}
+                      >
+                        <IconUserPlus />
+                        Registrar contacto
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="alerts-btn alerts-btn--red"
+                      disabled={updateMutation.isPending}
+                      onClick={() =>
+                        updateMutation.mutate({ id: detailAlert.id, status: 'RESOLVED' })
+                      }
+                    >
+                      <IconX />
+                      Resolver alerta
+                    </button>
+                  </>
+                ) : detailAlert.status === 'ACKNOWLEDGED' ? (
                   <button
                     type="button"
-                    className="alerts-btn alerts-btn--green"
-                    onClick={onRegisterContact}
+                    className="alerts-btn alerts-btn--red"
+                    disabled={updateMutation.isPending}
+                    onClick={() =>
+                      updateMutation.mutate({ id: detailAlert.id, status: 'RESOLVED' })
+                    }
                   >
-                    <IconUserPlus />
-                    Registrar contacto
+                    <IconX />
+                    Resolver alerta
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="alerts-btn alerts-btn--red"
-                  disabled={updateMutation.isPending}
-                  onClick={() =>
-                    updateMutation.mutate({ id: active.id, status: 'RESOLVED' })
-                  }
-                >
-                  <IconX />
-                  Resolver alerta
-                </button>
+                ) : (
+                  <p className="alerts-detail-closed-note">Esta alerta está resuelta. Solo lectura.</p>
+                )}
               </div>
             </div>
           </article>
@@ -359,7 +481,8 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
               Historial de alertas
             </h2>
             <p className="alerts-history-subtitle">
-              Registro reciente (se actualiza cada pocos segundos)
+              Registro reciente (se actualiza cada pocos segundos). Pulse una fila para ver el detalle
+              arriba.
             </p>
           </header>
           <div className="alerts-history-body" role="region" aria-label="Lista de historial">
@@ -371,36 +494,51 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
               <ul className="alerts-history-list">
                 {filteredHistory.map((a) => {
                   const rowCaptureUrl = alertCaptureDataUrl(a);
+                  const isSelected = selectedDetailId === a.id;
                   return (
-                  <li key={a.id} className="alerts-history-row">
-                    <div className="alerts-history-row-main">
-                      {rowCaptureUrl ? (
-                        <img
-                          className="alerts-history-thumb"
-                          src={rowCaptureUrl}
-                          alt=""
-                          loading="lazy"
-                        />
-                      ) : null}
-                      <span className="alerts-history-badge">{alertTag(a)}</span>
-                      <div>
-                        <p className="alerts-history-row-title">{alertTitle(a)}</p>
-                        <p className="alerts-history-row-meta">
-                          {formatDateTime(a.createdAt)} · {cameraLabel(a)} ·{' '}
-                          <strong>{a.status}</strong>
-                        </p>
-                        <p className="alerts-history-row-msg">{a.message}</p>
-                      </div>
-                    </div>
+                  <li
+                    key={a.id}
+                    className={`alerts-history-row${isSelected ? ' alerts-history-row--selected' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="alerts-history-row-select"
+                      onClick={() =>
+                        setSelectedDetailId((prev) => (prev === a.id ? null : a.id))
+                      }
+                      aria-pressed={isSelected}
+                      aria-label={`Ver detalle: ${alertTitle(a)}`}
+                    >
+                      <span className="alerts-history-row-main">
+                        {rowCaptureUrl ? (
+                          <img
+                            className="alerts-history-thumb"
+                            src={rowCaptureUrl}
+                            alt=""
+                            loading="lazy"
+                          />
+                        ) : null}
+                        <span className="alerts-history-badge">{alertTag(a)}</span>
+                        <span className="alerts-history-row-text">
+                          <span className="alerts-history-row-title">{alertTitle(a)}</span>
+                          <span className="alerts-history-row-meta">
+                            {formatDateTime(a.createdAt)} · {cameraLabel(a)} ·{' '}
+                            <strong>{a.status}</strong>
+                          </span>
+                          <span className="alerts-history-row-msg">{a.message}</span>
+                        </span>
+                      </span>
+                    </button>
                     {a.status === 'OPEN' ? (
                       <div className="alerts-history-row-actions">
                         <button
                           type="button"
                           className="alerts-history-mini-btn"
                           disabled={updateMutation.isPending}
-                          onClick={() =>
-                            updateMutation.mutate({ id: a.id, status: 'ACKNOWLEDGED' })
-                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateMutation.mutate({ id: a.id, status: 'ACKNOWLEDGED' });
+                          }}
                         >
                           Revisar
                         </button>
@@ -408,9 +546,10 @@ export function AlertsCenterView({ onRegisterContact }: AlertsCenterViewProps) {
                           type="button"
                           className="alerts-history-mini-btn alerts-history-mini-btn--primary"
                           disabled={updateMutation.isPending}
-                          onClick={() =>
-                            updateMutation.mutate({ id: a.id, status: 'RESOLVED' })
-                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateMutation.mutate({ id: a.id, status: 'RESOLVED' });
+                          }}
                         >
                           Resolver
                         </button>

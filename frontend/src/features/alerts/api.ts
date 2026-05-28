@@ -13,6 +13,10 @@ export type AlertItem = {
   /** Fotograma en base64 guardado al disparar la alerta (cámara). */
   captureImageBase64?: string | null;
   captureMimeType?: string | null;
+  /** Si sigue OPEN hasta esta hora (ISO), se envía correo a contactos. */
+  contactsNotifyAt?: string | null;
+  /** Si existe, ya se ejecutó el envío (o el flujo) de correo a contactos. */
+  contactsNotifiedAt?: string | null;
 };
 
 export type UpdateAlertPayload = {
@@ -20,14 +24,14 @@ export type UpdateAlertPayload = {
   message?: string;
 };
 
-async function fetchAlerts(limit = 200): Promise<AlertItem[]> {
+export async function fetchAlerts(limit = 200): Promise<AlertItem[]> {
   const { data } = await httpClient.get<AlertItem[]>('/alerts', {
     params: { limit },
   });
   return data;
 }
 
-async function patchAlert(id: string, payload: UpdateAlertPayload): Promise<AlertItem> {
+export async function patchAlert(id: string, payload: UpdateAlertPayload): Promise<AlertItem> {
   const { data } = await httpClient.patch<AlertItem>(`/alerts/${id}`, payload);
   return data;
 }
@@ -36,7 +40,8 @@ export function useAlertsQuery() {
   return useQuery({
     queryKey: ['alerts'],
     queryFn: () => fetchAlerts(),
-    refetchInterval: 8000,
+    /** Refresco más frecuente para sincronizar temporizador y envío de correos. */
+    refetchInterval: 5000,
   });
 }
 

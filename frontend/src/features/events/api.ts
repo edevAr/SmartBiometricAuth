@@ -10,7 +10,7 @@ export interface EventItem {
   metadataJson?: string | null;
 }
 
-async function fetchEvents(): Promise<EventItem[]> {
+export async function fetchEvents(): Promise<EventItem[]> {
   const { data } = await httpClient.get<EventItem[]>('/events', {
     params: { limit: 20 },
   });
